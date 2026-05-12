@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "PowerShell($env:PATH -split \";\" | Where-Object { $_ -match \"python|conda|py\" })"
+    ]
+  }
+}

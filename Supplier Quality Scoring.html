@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>협력업체 품질 스코어링 시스템</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'맑은 고딕',Malgun Gothic,'Segoe UI',sans-serif;background:#f1f5f9;color:#1e293b;display:flex;height:100vh;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:220px;background:#1e293b;display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-logo{padding:20px 16px;border-bottom:1px solid #334155}
+.sidebar-logo h1{font-size:14px;font-weight:700;color:#fff;line-height:1.4}
+.sidebar-logo p{font-size:11px;color:#94a3b8;margin-top:2px}
+.sidebar nav{flex:1;padding:12px 8px}
+.nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;background:none;border:none;border-radius:8px;color:#94a3b8;font-size:13px;cursor:pointer;text-align:left;transition:.15s}
+.nav-btn:hover{background:#334155;color:#e2e8f0}
+.nav-btn.active{background:#3b82f6;color:#fff}
+.nav-icon{font-size:15px;width:18px;text-align:center}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:28px}
+.page{display:none}
+.page.active{display:block}
+.page-title{font-size:20px;font-weight:700;color:#0f172a;margin-bottom:4px}
+.page-sub{font-size:13px;color:#64748b;margin-bottom:20px}
+
+/* Cards */
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.kpi{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.kpi-label{font-size:12px;color:#64748b;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.kpi-value{font-size:28px;font-weight:700;color:#0f172a}
+.kpi-sub{font-size:11px;color:#94a3b8;margin-top:4px}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+.card-title{font-size:14px;font-weight:600;margin-bottom:14px;color:#0f172a}
+
+/* Table */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#f8fafc;padding:10px 12px;text-align:left;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;white-space:nowrap}
+tbody td{padding:10px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tbody tr:hover{background:#f8fafc}
+tbody tr:last-child td{border-bottom:none}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge-dot{width:6px;height:6px;border-radius:50%}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;transition:.15s}
+.btn:hover{opacity:.9}
+.btn-primary{background:#3b82f6;color:#fff}
+.btn-danger{background:#fee2e2;color:#dc2626}
+.btn-ghost{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-icon{padding:5px 8px;font-size:14px}
+
+/* Upload zone */
+.dropzone{border:2px dashed #cbd5e1;border-radius:12px;padding:48px;text-align:center;cursor:pointer;transition:.15s;background:#fff}
+.dropzone:hover,.dropzone.drag{border-color:#3b82f6;background:#eff6ff}
+.dropzone-icon{font-size:36px;margin-bottom:10px}
+.dropzone-text{font-size:14px;font-weight:500;color:#475569;margin-bottom:4px}
+.dropzone-sub{font-size:12px;color:#94a3b8}
+input[type=file]#fileInput{display:none}
+
+/* Form */
+.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group label{font-size:11px;font-weight:500;color:#64748b}
+.form-group input,.form-group select,.form-group textarea{padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;outline:none;transition:.15s}
+.form-group input:focus,.form-group select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px #dbeafe}
+.form-check{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+.form-check input{width:14px;height:14px;cursor:pointer}
+
+/* Alerts */
+.alert{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:12px;display:flex;align-items:flex-start;gap:8px}
+.alert-success{background:#d1fae5;color:#065f46}
+.alert-error{background:#fee2e2;color:#991b1b}
+.alert-info{background:#dbeafe;color:#1e40af}
+
+/* Search bar */
+.search-bar{display:flex;gap:10px;margin-bottom:16px;align-items:center}
+.search-input{flex:1;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none}
+.search-input:focus{border-color:#3b82f6}
+
+/* Column guide */
+.col-guide{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px;margin-bottom:20px}
+.col-guide-title{font-size:13px;font-weight:600;color:#1e40af;margin-bottom:10px}
+.col-tags{display:flex;flex-wrap:wrap;gap:6px}
+.col-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:11px;font-family:monospace;background:#bfdbfe;color:#1e40af}
+.col-tag.required{background:#fecdd3;color:#be123c}
+.col-tag-label{font-size:11px;color:#64748b;font-family:sans-serif}
+
+/* Score display */
+.score-big{display:flex;align-items:center;gap:12px}
+.score-num{font-size:36px;font-weight:800}
+.stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.stat{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.stat-val{font-size:20px;font-weight:700;color:#0f172a}
+.stat-label{font-size:11px;color:#64748b;margin-top:3px}
+
+/* Upload result */
+.result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
+.result-box{border-radius:8px;padding:14px;text-align:center}
+.result-num{font-size:24px;font-weight:700}
+.result-lbl{font-size:12px;margin-top:2px}
+
+/* Back btn */
+.back-btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#64748b;background:none;border:none;cursor:pointer;padding:0;margin-bottom:16px}
+.back-btn:hover{color:#3b82f6}
+
+/* Inline form row */
+.form-row{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px;margin-bottom:16px}
+.form-actions{display:flex;gap:8px;margin-top:12px}
+
+/* Empty state */
+.empty{text-align:center;padding:48px;color:#94a3b8;font-size:14px}
+.empty-icon{font-size:32px;margin-bottom:8px}
+
+/* Filter bar */
+#filter-bar{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 16px;margin-bottom:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+#filter-bar select{padding:5px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;outline:none;cursor:pointer;background:#f8fafc}
+#filter-bar select:focus{border-color:#3b82f6}
+.fhalf-btn{padding:4px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#f8fafc;color:#64748b;font-family:inherit;transition:.15s}
+.fhalf-btn:hover{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}
+.fhalf-btn.on{background:#3b82f6;color:#fff;border-color:#3b82f6;font-weight:600}
+#filter-label{font-size:12px;font-weight:600;color:#3b82f6;margin-left:auto;white-space:nowrap}
+
+/* Responsive adjustments */
+.chart-container{position:relative;height:180px}
+
+/* Report page */
+.report-container{max-width:820px}
+.report-actions{display:flex;gap:10px;align-items:center;margin-bottom:20px}
+.report-body{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:40px;box-shadow:0 1px 3px rgba(0,0,0,.05);font-size:14px;line-height:1.8;color:#1e293b}
+.report-body h1{font-size:22px;font-weight:800;color:#0f172a;margin-bottom:6px;text-align:center}
+.report-body h2{font-size:16px;font-weight:700;color:#1e40af;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid #bfdbfe}
+.report-body h3{font-size:14px;font-weight:700;color:#0f172a;margin:18px 0 8px}
+.report-body p{margin-bottom:10px;color:#334155}
+.report-body ul,.report-body ol{margin:6px 0 12px 22px}
+.report-body li{margin-bottom:5px;color:#334155}
+.report-body strong{color:#0f172a}
+.report-meta{text-align:center;color:#64748b;font-size:12px;margin-bottom:28px;padding-bottom:16px;border-bottom:1px solid #e2e8f0}
+
+/* Print */
+@media print{
+  body{background:white}
+  .sidebar,#filter-bar,.report-actions,.api-key-box,.page-title,.page-sub{display:none!important}
+  .content{overflow:visible;padding:16px}
+  .page{display:none!important}
+  #pg-report{display:block!important}
+  .report-body{border:none;box-shadow:none;padding:0}
+  .report-container{max-width:100%}
+}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <h1>📊 품질 스코어링</h1>
+    <p>협력업체 관리 시스템</p>
+  </div>
+  <nav>
+    <button class="nav-btn active" data-page="dashboard" onclick="navigate('dashboard')"><span class="nav-icon">🏠</span>대시보드</button>
+    <button class="nav-btn" data-page="suppliers" onclick="navigate('suppliers')"><span class="nav-icon">🏭</span>협력업체</button>
+    <button class="nav-btn" data-page="upload" onclick="navigate('upload')"><span class="nav-icon">📂</span>엑셀 업로드</button>
+    <button class="nav-btn" data-page="analytics" onclick="navigate('analytics')"><span class="nav-icon">📈</span>분석</button>
+    <button class="nav-btn" data-page="report" onclick="navigate('report')"><span class="nav-icon">🤖</span>AI 보고서</button>
+  </nav>
+</div>
+
+<div class="content">
+
+  <!-- FILTER BAR -->
+  <div id="filter-bar">
+    <span style="font-size:12px;font-weight:600;color:#64748b">📅 기간 필터</span>
+    <select id="fy-year" onchange="applyFilter()">
+      <option value="all">전체 연도</option>
+    </select>
+    <div style="display:flex;gap:4px">
+      <button class="fhalf-btn on" data-h="all"    onclick="setHalf(this,'all')">전체</button>
+      <button class="fhalf-btn"   data-h="상반기"  onclick="setHalf(this,'상반기')">상반기 (1~6월)</button>
+      <button class="fhalf-btn"   data-h="하반기"  onclick="setHalf(this,'하반기')">하반기 (7~12월)</button>
+    </div>
+    <span id="filter-label"></span>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="pg-dashboard">
+    <div class="page-title">대시보드</div>
+    <div class="page-sub">협력업체 품질 현황 요약</div>
+    <div class="kpi-grid" id="kpi-grid"></div>
+    <div class="chart-grid">
+      <div class="card">
+        <div class="card-title">리스크 등급 분포</div>
+        <div class="chart-container"><canvas id="chart-risk"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">월별 불량률 추이</div>
+        <div class="chart-container"><canvas id="chart-trend"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <span class="card-title" style="margin:0">협력업체 현황</span>
+        <button class="btn btn-ghost btn-sm" onclick="navigate('suppliers')">전체 보기 →</button>
+      </div>
+      <div class="table-wrap" id="dash-table"></div>
+    </div>
+  </div>
+
+  <!-- SUPPLIERS -->
+  <div class="page" id="pg-suppliers">
+    <div class="page-title">협력업체 관리</div>
+    <div class="page-sub" id="supplier-sub"></div>
+    <div class="search-bar">
+      <input class="search-input" id="supplier-search" placeholder="🔍 업체명 검색" oninput="renderSuppliers()">
+      <input id="new-supplier-name" placeholder="새 업체명 입력" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;width:180px;outline:none" onkeydown="if(event.key==='Enter')addSupplierUI()">
+      <button class="btn btn-primary" onclick="addSupplierUI()">+ 추가</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap" id="suppliers-table"></div>
+    </div>
+  </div>
+
+  <!-- DETAIL -->
+  <div class="page" id="pg-detail">
+    <button class="back-btn" onclick="navigate('suppliers')">← 목록으로</button>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+      <div>
+        <div class="page-title" id="detail-name"></div>
+        <div class="page-sub">협력업체 품질 상세</div>
+      </div>
+      <div class="score-big" id="detail-score-badge"></div>
+    </div>
+    <div class="stat-grid" id="detail-stats"></div>
+    <div class="card" id="detail-records-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <span class="card-title" style="margin:0" id="detail-records-title"></span>
+        <button class="btn btn-primary btn-sm" onclick="toggleAddForm()">+ 기록 추가</button>
+      </div>
+      <div id="add-form-container" style="display:none"></div>
+      <div class="table-wrap" id="detail-table"></div>
+    </div>
+  </div>
+
+  <!-- UPLOAD -->
+  <div class="page" id="pg-upload">
+    <div class="page-title">엑셀 업로드</div>
+    <div class="page-sub">엑셀 파일을 업로드해 품질 데이터를 일괄 등록합니다</div>
+    <div class="col-guide">
+      <div class="col-guide-title">📋 컬럼 안내 (컬럼명이 정확하지 않아도 유사하면 자동 인식)</div>
+      <div class="col-tags">
+        <span class="col-tag required">거래처명 *필수</span>
+        <span class="col-tag-label">|</span>
+        <span class="col-tag">수량 <span style="font-weight:400">(입고수량)</span></span>
+        <span class="col-tag">시료 <span style="font-weight:400">(샘플링수량)</span></span>
+        <span class="col-tag">부적격 <span style="font-weight:400">(불량수량)</span></span>
+        <span class="col-tag">합격여부 <span style="font-weight:400">(적/부)</span></span>
+        <span class="col-tag">품번</span><span class="col-tag">품명</span>
+        <span class="col-tag">부적합상세내역</span>
+        <span class="col-tag">불량유형</span>
+        <span class="col-tag">VOC발생여부</span><span class="col-tag">재작업발생여부</span>
+        <span class="col-tag">날짜</span>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:#1e40af">
+        ✔ 불량률 = 부적격 ÷ 시료(샘플링수량) &nbsp;|&nbsp; ✔ 합격여부: 합격/불합격/OK/NG/Y/N 등 인식 &nbsp;|&nbsp; ✔ 입고수량/검사수량/불량수량 등 기존 컬럼명도 인식
+      </div>
+    </div>
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()"
+      ondragover="event.preventDefault();this.classList.add('drag')"
+      ondragleave="this.classList.remove('drag')"
+      ondrop="event.preventDefault();this.classList.remove('drag');handleFile(event.dataTransfer.files[0])">
+      <div class="dropzone-icon">📊</div>
+      <div class="dropzone-text">파일을 드래그하거나 클릭해서 업로드</div>
+      <div class="dropzone-sub">.xlsx / .xls 파일 지원</div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(this.files[0])">
+    <div id="upload-result"></div>
+  </div>
+
+  <!-- ANALYTICS -->
+  <div class="page" id="pg-analytics">
+    <div class="page-title">품질 분석</div>
+    <div class="page-sub">데이터 기반 협력업체 품질 심층 분석</div>
+    <div class="chart-grid" style="margin-bottom:20px">
+      <div class="card">
+        <div class="card-title">월별 불량수량 / 불량률 추이</div>
+        <div class="chart-container" style="height:200px"><canvas id="chart-monthly"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">불량 유형 TOP 10</div>
+        <div class="chart-container" style="height:200px"><canvas id="chart-defect-types"></canvas></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">협력업체 품질 순위</div>
+      <div class="table-wrap" id="ranking-table"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 부적합 상세내역 현황 <span id="nc-filter-label" style="font-size:12px;font-weight:400;color:#64748b;margin-left:8px"></span></div>
+      <div class="table-wrap" id="nc-summary-table"></div>
+    </div>
+  </div>
+
+  <!-- AI REPORT -->
+  <div class="page" id="pg-report">
+    <div class="page-title">품질 분석 보고서</div>
+    <div class="page-sub">현재 필터 기준 데이터를 자동 분석하여 보고서를 생성합니다.</div>
+    <div class="report-container">
+      <div class="report-actions">
+        <button class="btn btn-primary" onclick="generateReport()">📄 보고서 생성</button>
+        <button class="btn btn-ghost" id="btn-print" style="display:none" onclick="window.print()">🖨️ 인쇄 / PDF 저장</button>
+        <span id="report-filter-info" style="font-size:12px;color:#64748b;margin-left:4px"></span>
+      </div>
+      <div id="report-output"></div>
+    </div>
+  </div>
+
+</div><!-- .content -->
+
+<script>
+// ============================================================
+// DATA LAYER
+// ============================================================
+function loadData() {
+  return {
+    suppliers: JSON.parse(localStorage.getItem('qs_suppliers') || '[]'),
+    records:   JSON.parse(localStorage.getItem('qs_records')   || '[]'),
+  };
+}
+function saveData(d) {
+  localStorage.setItem('qs_suppliers', JSON.stringify(d.suppliers));
+  localStorage.setItem('qs_records',   JSON.stringify(d.records));
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+function getSuppliers() { return loadData().suppliers; }
+function getRecords(sid) {
+  const r = loadData().records;
+  return sid ? r.filter(x => x.supplier_id === sid) : r;
+}
+function getSupplier(id) { return getSuppliers().find(s => s.id === id); }
+
+function addSupplier(name) {
+  const d = loadData();
+  if (d.suppliers.find(s => s.name === name)) throw new Error('이미 존재하는 업체명입니다.');
+  const s = { id: uid(), name, created_at: new Date().toISOString() };
+  d.suppliers.push(s);
+  saveData(d);
+  return s;
+}
+function deleteSupplier(id) {
+  const d = loadData();
+  d.suppliers = d.suppliers.filter(s => s.id !== id);
+  d.records   = d.records.filter(r => r.supplier_id !== id);
+  saveData(d);
+}
+function addRecord(rec) {
+  const d = loadData();
+  const r = { ...rec, id: uid(), created_at: new Date().toISOString() };
+  d.records.push(r);
+  saveData(d);
+  return r;
+}
+function updateRecord(id, upd) {
+  const d = loadData();
+  const i = d.records.findIndex(r => r.id === id);
+  if (i < 0) return;
+  d.records[i] = { ...d.records[i], ...upd };
+  saveData(d);
+}
+function deleteRecord(id) {
+  const d = loadData();
+  d.records = d.records.filter(r => r.id !== id);
+  saveData(d);
+}
+
+// ============================================================
+// SCORING
+// ============================================================
+function calcScore(records) {
+  if (!records.length) return null;
+  // 불량률 = 부적격 ÷ 시료(샘플링수량). 시료가 없으면 입고수량으로 대체
+  const totalInspected = records.reduce((s,r) => s + (r.inspection_qty||r.received_qty||0), 0);
+  const totalReceived  = records.reduce((s,r) => s + (r.received_qty||0), 0);
+  const totalDefects   = records.reduce((s,r) => s + (r.defect_qty||0), 0);
+  const vocCount       = records.filter(r => r.voc_occurred).length;
+  const reworkCount    = records.filter(r => r.rework_occurred).length;
+  const defectRate     = totalInspected > 0 ? (totalDefects/totalInspected)*100 : 0;
+
+  const dp = defectRate > 5 ? 50 : defectRate > 3 ? 45 : defectRate > 2 ? 40 :
+             defectRate > 1 ? 30 : defectRate > 0.5 ? 20 : defectRate > 0 ? 10 : 0;
+  const vp = Math.min(vocCount * 15, 30);
+  const rp = Math.min(reworkCount * 10, 20);
+  const score = Math.max(0, Math.round((100 - dp - vp - rp) * 10) / 10);
+
+  return { score, risk: riskOf(score),
+    defectRate: +defectRate.toFixed(2),
+    totalReceived, totalInspected, totalDefects,
+    vocCount, reworkCount, count: records.length };
+}
+
+function riskOf(score) {
+  if (score >= 90) return { label:'우수', color:'#10b981', bg:'#d1fae5', text:'#065f46' };
+  if (score >= 75) return { label:'양호', color:'#3b82f6', bg:'#dbeafe', text:'#1e40af' };
+  if (score >= 60) return { label:'주의', color:'#f59e0b', bg:'#fef3c7', text:'#92400e' };
+  return               { label:'위험', color:'#ef4444', bg:'#fee2e2', text:'#991b1b' };
+}
+
+function badge(risk) {
+  if (!risk) return '<span style="color:#94a3b8;font-size:12px">-</span>';
+  return `<span class="badge" style="background:${risk.bg};color:${risk.text}"><span class="badge-dot" style="background:${risk.color}"></span>${risk.label}</span>`;
+}
+
+function esc(s) {
+  const d = document.createElement('div'); d.textContent = String(s??''); return d.innerHTML;
+}
+
+// ============================================================
+// DATE FILTER
+// ============================================================
+const _filter = { year: 'all', half: 'all' };
+
+function applyFilter() {
+  _filter.year = document.getElementById('fy-year').value;
+  updateFilterLabel();
+  rerenderCurrent();
+}
+function setHalf(btn, half) {
+  _filter.half = half;
+  document.querySelectorAll('.fhalf-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  updateFilterLabel();
+  rerenderCurrent();
+}
+function updateFilterLabel() {
+  const y = _filter.year === 'all' ? '전체 연도' : _filter.year + '년';
+  const h = _filter.half === 'all' ? '' : ' ' + _filter.half;
+  const lbl = y + h;
+  document.getElementById('filter-label').textContent = lbl === '전체 연도' ? '' : '▶ ' + lbl + ' 기준';
+}
+function updateYearOptions() {
+  const years = [...new Set(
+    getRecords().map(r => r.record_date?.slice(0,4)).filter(y => y?.length === 4)
+  )].sort();
+  const sel = document.getElementById('fy-year');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="all">전체 연도</option>' +
+    years.map(y => `<option value="${y}" ${y===cur?'selected':''}>${y}년</option>`).join('');
+}
+
+function filteredRecords(sid) {
+  let recs = getRecords(sid);
+  if (_filter.year !== 'all') recs = recs.filter(r => r.record_date?.slice(0,4) === _filter.year);
+  if (_filter.half === '상반기') recs = recs.filter(r => { const m=+r.record_date?.slice(5,7); return m>=1&&m<=6; });
+  if (_filter.half === '하반기') recs = recs.filter(r => { const m=+r.record_date?.slice(5,7); return m>=7&&m<=12; });
+  return recs;
+}
+
+// ============================================================
+// NAVIGATION & CHARTS
+// ============================================================
+const _charts = {};
+function destroyChart(id) { if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; } }
+
+let _currentSupplier = null;
+let _showForm = false;
+let _currentPage = 'dashboard';
+
+function navigate(page, sid) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(`pg-${page}`).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`[data-page="${page}"]`)?.classList.add('active');
+  _showForm = false;
+  _currentPage = page;
+  if (page === 'dashboard') renderDashboard();
+  else if (page === 'suppliers') renderSuppliers();
+  else if (page === 'detail') { _currentSupplier = sid; renderDetail(); }
+  else if (page === 'upload') {}
+  else if (page === 'analytics') renderAnalytics();
+  else if (page === 'report') renderReportPage();
+}
+function rerenderCurrent() {
+  if (_currentPage === 'dashboard') renderDashboard();
+  else if (_currentPage === 'suppliers') renderSuppliers();
+  else if (_currentPage === 'detail') renderDetail();
+  else if (_currentPage === 'analytics') renderAnalytics();
+  else if (_currentPage === 'report') renderReportPage();
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+function renderDashboard() {
+  const suppliers = getSuppliers();
+  const allRecords = filteredRecords();
+  const scored = suppliers.map(s => ({ s, sc: calcScore(filteredRecords(s.id)) })).filter(x => x.sc);
+
+  const avgScore = scored.length ? +(scored.reduce((a,x)=>a+x.sc.score,0)/scored.length).toFixed(1) : 0;
+  const risks = { '우수':0, '양호':0, '주의':0, '위험':0 };
+  scored.forEach(x => risks[x.sc.risk.label]++);
+
+  document.getElementById('kpi-grid').innerHTML = `
+    <div class="kpi"><div class="kpi-label">🏭 등록 업체</div><div class="kpi-value">${suppliers.length}</div><div class="kpi-sub">전체 협력업체 수</div></div>
+    <div class="kpi"><div class="kpi-label">⭐ 평균 품질점수</div><div class="kpi-value">${avgScore}</div><div class="kpi-sub">100점 만점</div></div>
+    <div class="kpi"><div class="kpi-label" style="color:#ef4444">🔴 위험 업체</div><div class="kpi-value" style="color:#ef4444">${risks['위험']}</div><div class="kpi-sub">즉시 조치 필요</div></div>
+    <div class="kpi"><div class="kpi-label" style="color:#f59e0b">🟡 주의 업체</div><div class="kpi-value" style="color:#f59e0b">${risks['주의']}</div><div class="kpi-sub">모니터링 필요</div></div>
+  `;
+
+  // Risk pie chart
+  destroyChart('risk');
+  const riskCtx = document.getElementById('chart-risk').getContext('2d');
+  const riskData = Object.entries(risks).filter(([,v])=>v>0);
+  const RISK_COLORS = {'우수':'#10b981','양호':'#3b82f6','주의':'#f59e0b','위험':'#ef4444'};
+  _charts['risk'] = new Chart(riskCtx, {
+    type:'doughnut',
+    data:{ labels: riskData.map(([k])=>k), datasets:[{ data: riskData.map(([,v])=>v), backgroundColor: riskData.map(([k])=>RISK_COLORS[k]), borderWidth:2, borderColor:'#fff' }] },
+    options:{ plugins:{ legend:{ position:'right', labels:{ font:{size:12}, boxWidth:12 } } }, cutout:'60%' }
+  });
+
+  // Monthly trend
+  destroyChart('trend');
+  const monthly = buildMonthlyTrend(allRecords);
+  const trendCtx = document.getElementById('chart-trend').getContext('2d');
+  _charts['trend'] = new Chart(trendCtx, {
+    type:'line',
+    data:{ labels: monthly.map(m=>m.month), datasets:[{
+      label:'불량률(%)', data: monthly.map(m=>m.defectRate),
+      borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.1)', tension:.3, fill:true, pointRadius:3
+    }]},
+    options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{font:{size:11}} }, x:{ ticks:{font:{size:11}} } } }
+  });
+
+  // Table (top 5 by risk)
+  const sorted = scored.sort((a,b) => a.sc.score - b.sc.score).slice(0,6);
+  if (!sorted.length) {
+    document.getElementById('dash-table').innerHTML = '<div class="empty"><div class="empty-icon">📭</div>데이터가 없습니다. 엑셀을 업로드하거나 업체를 추가하세요.</div>';
+    return;
+  }
+  document.getElementById('dash-table').innerHTML = `
+    <table><thead><tr><th>업체명</th><th>품질점수</th><th>불량률</th><th>VOC</th><th>검사건수</th></tr></thead>
+    <tbody>${sorted.map(({s,sc})=>`
+      <tr style="cursor:pointer" onclick="navigate('detail','${s.id}')">
+        <td><strong>${esc(s.name)}</strong></td>
+        <td><span style="font-weight:700;font-size:15px;margin-right:6px">${sc.score}</span>${badge(sc.risk)}</td>
+        <td>${sc.defectRate}%</td><td>${sc.vocCount}건</td><td>${sc.count}건</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function buildMonthlyTrend(records) {
+  const map = {};
+  records.forEach(r => {
+    const m = String(r.record_date||'').slice(0,7); if(!m||m.length<7) return;
+    if (!map[m]) map[m] = {received:0, inspected:0, defects:0};
+    map[m].received  += r.received_qty||0;
+    map[m].inspected += r.inspection_qty||r.received_qty||0; // 시료 기준
+    map[m].defects   += r.defect_qty||0;
+  });
+  return Object.entries(map).sort(([a],[b])=>a.localeCompare(b)).map(([month,v])=>({
+    month,
+    defectRate: v.inspected>0 ? +((v.defects/v.inspected)*100).toFixed(2) : 0,
+    defects: v.defects, inspected: v.inspected, received: v.received
+  }));
+}
+
+// ============================================================
+// SUPPLIERS LIST
+// ============================================================
+function renderSuppliers() {
+  const suppliers = getSuppliers();
+  const q = (document.getElementById('supplier-search')?.value||'').toLowerCase();
+  document.getElementById('supplier-sub').textContent = `전체 ${suppliers.length}개 업체`;
+
+  const filtered = suppliers.filter(s => s.name.toLowerCase().includes(q))
+    .map(s => ({s, sc: calcScore(filteredRecords(s.id))}))
+    .sort((a,b)=>{
+      const ro = {'위험':0,'주의':1,'양호':2,'우수':3};
+      const ra = ro[a.sc?.risk?.label]??4, rb = ro[b.sc?.risk?.label]??4;
+      return ra!==rb ? ra-rb : (a.sc?.score??100)-(b.sc?.score??100);
+    });
+
+  if (!filtered.length) {
+    document.getElementById('suppliers-table').innerHTML = '<div class="empty"><div class="empty-icon">🔍</div>검색 결과가 없습니다.</div>';
+    return;
+  }
+  document.getElementById('suppliers-table').innerHTML = `
+    <table><thead><tr><th>업체명</th><th>품질점수</th><th>불량률</th><th>총입고</th><th>불량수</th><th>VOC</th><th>재작업</th><th>검사건수</th><th></th></tr></thead>
+    <tbody>${filtered.map(({s,sc})=>`
+      <tr>
+        <td style="cursor:pointer" onclick="navigate('detail','${s.id}')"><strong style="color:#3b82f6">${esc(s.name)}</strong></td>
+        <td>${sc?`<span style="font-weight:700;margin-right:6px">${sc.score}</span>${badge(sc.risk)}`:'<span style="color:#94a3b8">-</span>'}</td>
+        <td>${sc?sc.defectRate+'%':'-'}</td>
+        <td>${sc?sc.totalReceived.toLocaleString():'-'}</td>
+        <td>${sc?sc.totalDefects.toLocaleString():'-'}</td>
+        <td>${sc?sc.vocCount+'건':'-'}</td>
+        <td>${sc?sc.reworkCount+'건':'-'}</td>
+        <td>${sc?sc.count+'건':'-'}</td>
+        <td><button class="btn btn-danger btn-sm btn-icon" onclick="delSupplierUI('${s.id}','${esc(s.name)}')" title="삭제">🗑</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function addSupplierUI() {
+  const inp = document.getElementById('new-supplier-name');
+  const name = inp.value.trim();
+  if (!name) return;
+  try { addSupplier(name); inp.value=''; renderSuppliers(); }
+  catch(e) { alert(e.message); }
+}
+
+function delSupplierUI(id, name) {
+  if (!confirm(`"${name}" 업체와 모든 품질 기록을 삭제하시겠습니까?`)) return;
+  deleteSupplier(id); renderSuppliers();
+}
+
+// ============================================================
+// SUPPLIER DETAIL
+// ============================================================
+function renderDetail() {
+  const s = getSupplier(_currentSupplier);
+  if (!s) return;
+  const records = filteredRecords(s.id).sort((a,b)=>b.record_date?.localeCompare(a.record_date));
+  const sc = calcScore(records);
+
+  document.getElementById('detail-name').textContent = s.name;
+  document.getElementById('detail-score-badge').innerHTML = sc
+    ? `<div class="score-big"><span class="score-num">${sc.score}</span>${badge(sc.risk)}</div>`
+    : '<span style="color:#94a3b8">데이터 없음</span>';
+
+  document.getElementById('detail-stats').innerHTML = sc ? `
+    <div class="stat"><div class="stat-val">${sc.totalReceived.toLocaleString()}</div><div class="stat-label">총 입고수량</div></div>
+    <div class="stat"><div class="stat-val">${sc.totalInspected.toLocaleString()}</div><div class="stat-label">총 시료(검사수량)</div></div>
+    <div class="stat"><div class="stat-val">${sc.totalDefects.toLocaleString()}</div><div class="stat-label">부적격(불량)수량</div></div>
+    <div class="stat"><div class="stat-val" style="color:${sc.defectRate>3?'#ef4444':sc.defectRate>1?'#f59e0b':'#10b981'}">${sc.defectRate}%</div><div class="stat-label">불량률(부적격/시료)</div></div>
+    <div class="stat"><div class="stat-val" style="color:#ef4444">${sc.vocCount}건</div><div class="stat-label">VOC 발생</div></div>
+  ` : '';
+
+  document.getElementById('detail-records-title').textContent = `품질 기록 (${records.length}건)`;
+
+  if (_showForm) {
+    document.getElementById('add-form-container').style.display = 'block';
+    document.getElementById('add-form-container').innerHTML = buildRecordForm();
+  } else {
+    document.getElementById('add-form-container').style.display = 'none';
+  }
+
+  if (!records.length) {
+    document.getElementById('detail-table').innerHTML = '<div class="empty"><div class="empty-icon">📭</div>기록이 없습니다. 엑셀 업로드 또는 기록 추가 버튼을 이용하세요.</div>';
+    return;
+  }
+  document.getElementById('detail-table').innerHTML = `
+    <table><thead><tr><th>날짜</th><th>품번</th><th>품명</th><th>입고</th><th>검사</th><th>불량</th><th>적/부</th><th>불량유형</th><th>VOC</th><th>재작업</th><th>출처</th><th></th></tr></thead>
+    <tbody>${records.map(r=>`
+      <tr>
+        <td>${r.record_date||'-'}</td>
+        <td>${esc(r.part_number)||'-'}</td>
+        <td>${esc(r.part_name)||'-'}</td>
+        <td>${(r.received_qty||0).toLocaleString()}</td>
+        <td>${(r.inspection_qty||0).toLocaleString()}</td>
+        <td>${(r.defect_qty||0).toLocaleString()}</td>
+        <td>${r.pass_fail ? `<span class="badge" style="${r.pass_fail==='부적합'?'background:#fee2e2;color:#991b1b':'background:#d1fae5;color:#065f46'}">${r.pass_fail}</span>` : '-'}</td>
+        <td>${esc(r.defect_type)||'-'}</td>
+        <td style="text-align:center">${r.voc_occurred?'✅':''}</td>
+        <td style="text-align:center">${r.rework_occurred?'✅':''}</td>
+        <td><span style="font-size:11px;background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:4px">${r.source||'수동'}</span></td>
+        <td><button class="btn btn-danger btn-sm btn-icon" onclick="delRecordUI('${r.id}')" title="삭제">🗑</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function toggleAddForm() {
+  _showForm = !_showForm; renderDetail();
+  if (_showForm) document.getElementById('add-form-container').scrollIntoView({behavior:'smooth'});
+}
+
+function buildRecordForm(editId) {
+  const today = new Date().toISOString().slice(0,10);
+  return `
+    <div class="form-row">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">새 기록 추가</div>
+      <div class="form-grid">
+        <div class="form-group"><label>날짜 *</label><input type="date" id="f-date" value="${today}"></div>
+        <div class="form-group"><label>품번</label><input id="f-pno" placeholder="예: P-001"></div>
+        <div class="form-group"><label>품명</label><input id="f-pname" placeholder="예: 브라켓"></div>
+        <div class="form-group"><label>입고수량</label><input type="number" id="f-recv" value="0" min="0"></div>
+        <div class="form-group"><label>검사수량</label><input type="number" id="f-insp" value="0" min="0"></div>
+        <div class="form-group"><label>불량수량</label><input type="number" id="f-defq" value="0" min="0"></div>
+        <div class="form-group"><label>적/부 여부</label>
+          <select id="f-pf">
+            <option value="">선택</option>
+            <option value="적합">적합</option>
+            <option value="부적합">부적합</option>
+          </select>
+        </div>
+        <div class="form-group"><label>불량유형</label><input id="f-dtype" placeholder="예: 치수불량"></div>
+        <div class="form-group" style="grid-column:span 2"><label>부적합 상세내역</label><input id="f-detail" placeholder="부적합 내용"></div>
+        <div class="form-group" style="display:flex;flex-direction:row;align-items:flex-end;gap:16px;grid-column:span 2">
+          <label class="form-check"><input type="checkbox" id="f-voc"> VOC 발생</label>
+          <label class="form-check"><input type="checkbox" id="f-rework"> 재작업 발생</label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveRecordUI()">저장</button>
+        <button class="btn btn-ghost" onclick="toggleAddForm()">취소</button>
+      </div>
+    </div>`;
+}
+
+function saveRecordUI() {
+  const date = document.getElementById('f-date').value;
+  if (!date) { alert('날짜를 입력하세요.'); return; }
+  addRecord({
+    supplier_id: _currentSupplier,
+    record_date: date,
+    part_number: document.getElementById('f-pno').value.trim()||null,
+    part_name: document.getElementById('f-pname').value.trim()||null,
+    received_qty: +document.getElementById('f-recv').value||0,
+    inspection_qty: +document.getElementById('f-insp').value||0,
+    defect_qty: +document.getElementById('f-defq').value||0,
+    pass_fail: document.getElementById('f-pf').value||null,
+    defect_type: document.getElementById('f-dtype').value.trim()||null,
+    nonconformance_detail: document.getElementById('f-detail').value.trim()||null,
+    voc_occurred: document.getElementById('f-voc').checked,
+    rework_occurred: document.getElementById('f-rework').checked,
+    source: '수동',
+  });
+  _showForm = false; renderDetail();
+}
+
+function delRecordUI(id) {
+  if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+  deleteRecord(id); renderDetail();
+}
+
+// ============================================================
+// EXCEL UPLOAD
+// ============================================================
+const COLUMN_ALIASES = {
+  supplier_name:    ['거래처명','업체명','협력사명','공급업체','거래처','회사명','공급사'],
+  part_number:      ['품번','부품번호','partno','part no','자재번호','도번'],
+  part_name:        ['품명','부품명','제품명','자재명','품목명'],
+  received_qty:     ['수량','입고수량','입고량','납품수량','lot수량','로트수량','총수량'],
+  inspection_qty:   ['시료','시료수','시료수량','샘플수','샘플수량','검사수량','검사량','검사개수','샘플링수량'],
+  pass_fail:        ['합격여부','합부여부','합격/불합격','판정결과','적/부여부','적/부 여부','적부여부','판정','합부판정','검사결과','결과','합부','적부'],
+  nonconformance_detail: ['부적합상세내역','부적합내역','불량내역','불량상세','부적합사항','비고','내용','불량내용'],
+  record_date:      ['날짜','검사일','입고일','일자','검사요청일','의뢰일'],
+  defect_qty:       ['부적격','부적격수','부적격수량','불량수량','불량수','불량량','부적합수량','불량개수','NG수'],
+  defect_type:      ['불량유형','불량종류','불량구분','결함유형','부적합유형','불량항목'],
+  voc_occurred:     ['voc발생여부','voc여부','voc'],
+  rework_occurred:  ['재작업발생여부','재작업여부','재작업'],
+};
+
+function buildColMap() {
+  const m = {};
+  for (const [field, aliases] of Object.entries(COLUMN_ALIASES))
+    for (const a of aliases) m[a.toLowerCase().replace(/\s+/g,'')] = field;
+  return m;
+}
+const COL_MAP = buildColMap();
+
+function mapRow(raw) {
+  const out = {};
+  for (const [k,v] of Object.entries(raw)) {
+    const norm = k.trim().toLowerCase().replace(/\s+/g,'');
+    out[COL_MAP[norm] || k.trim()] = v;
+  }
+  return out;
+}
+
+const FAIL_VALS = ['부','부적합','불합격','불합격','f','n','ng','불량','fail','no','×','x','부적격','reject','rejected'];
+const PASS_VALS = ['적','적합','합격','p','y','ok','양호','pass','yes','○','o','합격','accept','accepted'];
+
+function parseBool(v) {
+  const s = String(v||'').trim().toLowerCase();
+  return ['y','예','있음','발생','true','1','o','○'].includes(s);
+}
+
+function handleFile(file) {
+  if (!file) return;
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    document.getElementById('upload-result').innerHTML = '<div class="alert alert-error">❌ .xlsx 또는 .xls 파일만 업로드 가능합니다.</div>';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type:'binary', cellDates:true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+      const rows = rawRows.map(mapRow);
+
+      if (!rows.length || !rows[0].hasOwnProperty('supplier_name')) {
+        const cols = Object.keys(rawRows[0]||{}).join(', ');
+        document.getElementById('upload-result').innerHTML =
+          `<div class="alert alert-error">❌ '거래처명' 컬럼을 찾을 수 없습니다.<br>감지된 컬럼: <b>${esc(cols)}</b></div>`;
+        return;
+      }
+
+      const today = new Date().toISOString().slice(0,10);
+      let success=0, errors=[], newSuppliers=[];
+
+      for (let i=0; i<rows.length; i++) {
+        const row = rows[i];
+        try {
+          const name = String(row.supplier_name||'').trim();
+          if (!name || name==='undefined' || name==='null') continue;
+
+          let supplier = getSuppliers().find(s=>s.name===name);
+          if (!supplier) { supplier = addSupplier(name); newSuppliers.push(name); }
+
+          let rd = row.record_date;
+          if (!rd || rd==='') rd = today;
+          else if (rd instanceof Date) rd = rd.toISOString().slice(0,10);
+          else rd = String(rd).slice(0,10);
+
+          const safeInt = v => { const n=parseInt(v,10); return isNaN(n)?0:n; };
+          const recv = safeInt(row.received_qty);  // 수량 (입고 전체 수량)
+          const insp = safeInt(row.inspection_qty); // 시료 (샘플링 수량)
+
+          const pfRaw = String(row.pass_fail||'').trim().toLowerCase();
+          let passFail = null;
+          if (FAIL_VALS.includes(pfRaw)) passFail='부적합';
+          else if (PASS_VALS.includes(pfRaw)) passFail='적합';
+
+          let defectQty = safeInt(row.defect_qty); // 부적격 수량
+          // 합격여부가 불합격인데 부적격 수량이 없으면 최소 1로 처리
+          if (passFail==='부적합' && defectQty===0) defectQty = 1;
+
+          addRecord({
+            supplier_id: supplier.id,
+            record_date: rd,
+            part_number: String(row.part_number||'').trim()||null,
+            part_name:   String(row.part_name||'').trim()||null,
+            received_qty: recv, inspection_qty: insp||recv,
+            pass_fail: passFail, defect_qty: defectQty,
+            defect_type: String(row.defect_type||'').trim()||null,
+            nonconformance_detail: String(row.nonconformance_detail||'').trim()||null,
+            voc_occurred:    parseBool(row.voc_occurred),
+            rework_occurred: parseBool(row.rework_occurred),
+            source: '엑셀',
+          });
+          success++;
+        } catch(err) { errors.push(`행 ${i+2}: ${err.message}`); }
+      }
+
+      let html = `
+        <div class="card" style="margin-top:16px">
+          <div class="card-title">업로드 결과</div>
+          <div class="result-grid">
+            <div class="result-box" style="background:#f1f5f9"><div class="result-num">${rows.length}</div><div class="result-lbl">전체 행</div></div>
+            <div class="result-box" style="background:#d1fae5"><div class="result-num" style="color:#065f46">${success}</div><div class="result-lbl" style="color:#065f46">성공</div></div>
+            <div class="result-box" style="background:#fee2e2"><div class="result-num" style="color:#991b1b">${errors.length}</div><div class="result-lbl" style="color:#991b1b">오류</div></div>
+          </div>`;
+      if (newSuppliers.length) html += `<div class="alert alert-success" style="margin-top:8px">✅ 신규 등록 업체: <b>${newSuppliers.map(esc).join(', ')}</b></div>`;
+      if (errors.length) html += `<div class="alert alert-error">⚠️ 오류:<ul style="margin:4px 0 0 16px">${errors.slice(0,10).map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`;
+      html += `<button class="btn btn-primary" style="margin-top:8px" onclick="navigate('suppliers')">협력업체 목록 보기 →</button></div>`;
+      updateYearOptions();
+      document.getElementById('upload-result').innerHTML = html;
+      document.getElementById('fileInput').value='';
+    } catch(err) {
+      document.getElementById('upload-result').innerHTML = `<div class="alert alert-error">❌ 파일 파싱 오류: ${esc(err.message)}</div>`;
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+// ============================================================
+// ANALYTICS
+// ============================================================
+function renderAnalytics() {
+  const suppliers = getSuppliers();
+  const allRecords = filteredRecords();
+  const monthly = buildMonthlyTrend(allRecords);
+
+  // Monthly chart
+  destroyChart('monthly');
+  _charts['monthly'] = new Chart(document.getElementById('chart-monthly').getContext('2d'), {
+    type:'bar',
+    data:{ labels: monthly.map(m=>m.month), datasets:[
+      { label:'불량수량', data: monthly.map(m=>m.defects), backgroundColor:'rgba(239,68,68,.7)', yAxisID:'y' },
+      { label:'불량률(%)', data: monthly.map(m=>m.defectRate), type:'line', borderColor:'#f59e0b', backgroundColor:'transparent', tension:.3, pointRadius:3, yAxisID:'y2' }
+    ]},
+    options:{ plugins:{legend:{labels:{font:{size:11}}}}, scales:{
+      y:{ position:'left', ticks:{font:{size:11}} },
+      y2:{ position:'right', grid:{drawOnChartArea:false}, ticks:{font:{size:11},callback:v=>v+'%'} },
+      x:{ ticks:{font:{size:11}} }
+    }}
+  });
+
+  // Defect types
+  const defectMap = {};
+  allRecords.forEach(r => { if(r.defect_type?.trim()) defectMap[r.defect_type] = (defectMap[r.defect_type]||0)+1; });
+  const topDefects = Object.entries(defectMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  destroyChart('defect-types');
+  if (topDefects.length) {
+    _charts['defect-types'] = new Chart(document.getElementById('chart-defect-types').getContext('2d'), {
+      type:'bar',
+      data:{ labels: topDefects.map(([k])=>k), datasets:[{ label:'건수', data: topDefects.map(([,v])=>v), backgroundColor:'#3b82f6' }]},
+      options:{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:11}}}, y:{ticks:{font:{size:11}}} } }
+    });
+  }
+
+  // Ranking table
+  const ranked = suppliers
+    .map(s => { const sc=calcScore(filteredRecords(s.id)); return sc?{s,sc}:null; })
+    .filter(Boolean)
+    .sort((a,b)=>b.sc.score-a.sc.score);
+
+  document.getElementById('ranking-table').innerHTML = !ranked.length
+    ? '<div class="empty"><div class="empty-icon">📭</div>데이터 없음</div>'
+    : `<table><thead><tr><th>순위</th><th>업체명</th><th>품질점수</th><th>불량률</th><th>VOC</th><th>재작업</th><th>검사건수</th></tr></thead>
+      <tbody>${ranked.map(({s,sc},i)=>`
+        <tr style="cursor:pointer" onclick="navigate('detail','${s.id}')">
+          <td><span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;font-size:12px;font-weight:700;background:${i===0?'#fef3c7':i===1?'#f1f5f9':i===2?'#fee2e2':'#f8fafc'};color:${i===0?'#92400e':i===1?'#475569':i===2?'#991b1b':'#64748b'}">${i+1}</span></td>
+          <td><strong>${esc(s.name)}</strong></td>
+          <td><span style="font-weight:700;margin-right:6px">${sc.score}</span>${badge(sc.risk)}</td>
+          <td>${sc.defectRate}%</td><td>${sc.vocCount}건</td><td>${sc.reworkCount}건</td><td>${sc.count}건</td>
+        </tr>`).join('')}
+      </tbody></table>`;
+
+  renderNCSummary(allRecords, suppliers);
+}
+
+function renderNCSummary(records, suppliers) {
+  // 필터 레이블
+  const y = _filter.year === 'all' ? '전체' : _filter.year+'년';
+  const h = _filter.half === 'all' ? '' : ' '+_filter.half;
+  document.getElementById('nc-filter-label').textContent = `(${y}${h} 기준)`;
+
+  // 부적합 상세내역 집계
+  const map = {};   // key = 내역, value = { count, suppliers: Set }
+  records.forEach(r => {
+    const txt = (r.nonconformance_detail||'').trim();
+    if (!txt) return;
+    if (!map[txt]) map[txt] = { count:0, suppliers: new Set() };
+    map[txt].count++;
+    // 업체명 찾기
+    const sup = suppliers.find(s => s.id === r.supplier_id);
+    if (sup) map[txt].suppliers.add(sup.name);
+  });
+
+  const sorted = Object.entries(map).sort((a,b)=>b[1].count - a[1].count);
+
+  if (!sorted.length) {
+    document.getElementById('nc-summary-table').innerHTML =
+      '<div class="empty"><div class="empty-icon">📭</div>부적합 상세내역 데이터 없음</div>';
+    return;
+  }
+
+  const maxCnt = sorted[0][1].count;
+  document.getElementById('nc-summary-table').innerHTML = `
+    <table>
+      <thead><tr><th style="width:40%">부적합 상세내역</th><th>발생건수</th><th>비율</th><th>발생 업체</th></tr></thead>
+      <tbody>${sorted.map(([txt, v]) => {
+        const pct = Math.round(v.count/records.filter(r=>r.nonconformance_detail?.trim()).length*100);
+        const barW = Math.round(v.count/maxCnt*100);
+        const supList = [...v.suppliers].join(', ');
+        return `<tr>
+          <td><span style="font-size:13px">${esc(txt)}</span></td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:80px;height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden">
+                <div style="width:${barW}%;height:100%;background:#3b82f6;border-radius:4px"></div>
+              </div>
+              <span style="font-weight:600">${v.count}건</span>
+            </div>
+          </td>
+          <td><span style="font-size:12px;color:#64748b">${pct}%</span></td>
+          <td><span style="font-size:12px;color:#64748b">${esc(supList)}</span></td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ============================================================
+// REPORT (무료 자동 생성)
+// ============================================================
+function renderReportPage() {
+  const y = _filter.year === 'all' ? '전체 연도' : _filter.year + '년';
+  const h = _filter.half === 'all' ? '전체' : _filter.half;
+  const fi = document.getElementById('report-filter-info');
+  if (fi) fi.textContent = `현재 기간: ${y} ${h} 기준`;
+}
+
+function generateReport() {
+  const allRecs = filteredRecords();
+  if (!allRecs.length) {
+    document.getElementById('report-output').innerHTML =
+      '<div class="alert alert-error">선택한 기간에 데이터가 없습니다. 필터를 확인해주세요.</div>';
+    return;
+  }
+
+  const suppliers = getSuppliers();
+  const period = (_filter.year === 'all' ? '전체 기간' : _filter.year + '년') +
+                 (_filter.half === 'all' ? '' : ' ' + _filter.half);
+  const now = new Date().toLocaleString('ko-KR');
+
+  // ── 데이터 집계 ──────────────────────────────────────
+  const rankings = suppliers.map(s => {
+    const recs = filteredRecords(s.id);
+    if (!recs.length) return null;
+    const sc = calcScore(recs);
+    return { name: s.name, id: s.id, ...sc };
+  }).filter(Boolean).sort((a, b) => b.score - a.score);
+
+  const totalInsp    = allRecs.reduce((s, r) => s + (r.inspection_qty || r.received_qty || 0), 0);
+  const totalRecv    = allRecs.reduce((s, r) => s + (r.received_qty || 0), 0);
+  const totalDefects = allRecs.reduce((s, r) => s + (r.defect_qty || 0), 0);
+  const totalVoc     = allRecs.filter(r => r.voc_occurred).length;
+  const totalRework  = allRecs.filter(r => r.rework_occurred).length;
+  const overallRate  = totalInsp > 0 ? (totalDefects / totalInsp * 100) : 0;
+  const avgScore     = rankings.length ? +(rankings.reduce((s, r) => s + r.score, 0) / rankings.length).toFixed(1) : 0;
+
+  const riskCounts = { '우수': 0, '양호': 0, '주의': 0, '위험': 0 };
+  rankings.forEach(r => riskCounts[r.risk.label]++);
+
+  const dangerList  = rankings.filter(r => r.risk.label === '위험');
+  const cautionList = rankings.filter(r => r.risk.label === '주의');
+
+  const ncMap = {};
+  allRecs.forEach(r => {
+    const k = (r.nonconformance_detail || '').trim();
+    if (k) ncMap[k] = (ncMap[k] || 0) + 1;
+  });
+  const ncTop = Object.entries(ncMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const ncTotal = Object.values(ncMap).reduce((s, v) => s + v, 0);
+
+  const dtMap = {};
+  allRecs.forEach(r => {
+    const k = (r.defect_type || '').trim();
+    if (k) dtMap[k] = (dtMap[k] || 0) + 1;
+  });
+  const dtTop = Object.entries(dtMap).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  // ── 종합 평가 문구 (규칙 기반) ────────────────────────
+  const overallComment = avgScore >= 90
+    ? `전체 협력업체의 평균 품질점수는 <strong>${avgScore}점</strong>으로, 전반적으로 <strong>우수한 품질 수준</strong>을 유지하고 있습니다.`
+    : avgScore >= 75
+    ? `전체 협력업체의 평균 품질점수는 <strong>${avgScore}점</strong>으로 <strong>양호한 수준</strong>이나, 일부 업체에 대한 지속적인 모니터링이 필요합니다.`
+    : avgScore >= 60
+    ? `전체 협력업체의 평균 품질점수는 <strong>${avgScore}점</strong>으로 <strong>주의가 필요한 수준</strong>입니다. 하위 업체에 대한 집중 관리가 요구됩니다.`
+    : `전체 협력업체의 평균 품질점수는 <strong>${avgScore}점</strong>으로 <strong>전반적인 품질 개선이 시급</strong>합니다. 즉각적인 조치가 필요합니다.`;
+
+  const defectComment = overallRate === 0
+    ? '분석 기간 내 부적격 발생 이력이 없습니다.'
+    : overallRate > 3
+    ? `전체 불량률 <strong>${overallRate.toFixed(2)}%</strong>는 관리 기준을 초과하는 수준으로, 품질 개선 조치가 시급합니다.`
+    : overallRate > 1
+    ? `전체 불량률 <strong>${overallRate.toFixed(2)}%</strong>는 허용 범위 내이나 지속적인 관리가 필요합니다.`
+    : `전체 불량률 <strong>${overallRate.toFixed(2)}%</strong>로 양호한 수준을 유지하고 있습니다.`;
+
+  // ── 개선 권고사항 생성 (규칙 기반) ───────────────────
+  const recommendations = [];
+  dangerList.forEach(r => {
+    const items = [];
+    if (r.defectRate > 3) items.push(`불량률 ${r.defectRate}% — 공정 원인 분석 및 시정조치 계획서 제출 요청`);
+    if (r.vocCount > 0)   items.push(`VOC ${r.vocCount}건 — 재발방지 대책 및 고객 클레임 처리 현황 점검`);
+    if (r.reworkCount > 0) items.push(`재작업 ${r.reworkCount}건 — 재작업 원인 근본 분석 및 공정 개선 요구`);
+    if (!items.length)     items.push('전반적 품질 저하 — 정밀 품질 감사(Audit) 실시 권고');
+    recommendations.push({ name: r.name, level: '위험', color: '#ef4444', bg: '#fee2e2', items });
+  });
+  cautionList.forEach(r => {
+    const items = [];
+    if (r.defectRate > 1) items.push(`불량률 ${r.defectRate}% — 검사 기준 재확인 및 개선 목표 설정`);
+    if (r.vocCount > 0)   items.push(`VOC ${r.vocCount}건 — VOC 재발 방지 방안 수립`);
+    if (r.reworkCount > 0) items.push(`재작업 ${r.reworkCount}건 — 재작업 발생 공정 집중 관리`);
+    if (!items.length)     items.push('정기 품질 협의회 개최 및 개선 계획 수립 요청');
+    recommendations.push({ name: r.name, level: '주의', color: '#f59e0b', bg: '#fef3c7', items });
+  });
+
+  // 전체 공통 권고
+  const generalRecs = [];
+  if (totalVoc > 0)    generalRecs.push(`VOC 총 ${totalVoc}건 발생 — VOC 유형 분류 및 재발 방지 시스템 구축`);
+  if (totalRework > 0) generalRecs.push(`재작업 총 ${totalRework}건 발생 — 재작업 비용 산정 및 공급업체 책임 기준 마련`);
+  if (overallRate > 1) generalRecs.push(`전체 불량률 ${overallRate.toFixed(2)}% — 분기별 품질 목표 설정 및 KPI 관리 강화`);
+  if (ncTop.length > 0) generalRecs.push(`반복 부적합 상위 항목(${ncTop[0][0]}) — 해당 업체 대상 특별 관리 지정 검토`);
+
+  // ── HTML 조립 ─────────────────────────────────────────
+  const riskRow = (label, color, bg, text, count) =>
+    `<tr><td><span class="badge" style="background:${bg};color:${text}">${label}</span></td>
+     <td style="font-weight:700">${count}개사</td>
+     <td style="color:#64748b">${rankings.length ? Math.round(count/rankings.length*100) : 0}%</td>
+     <td style="font-size:12px;color:#64748b">${
+       label==='우수'?'정기 모니터링 유지':label==='양호'?'분기별 점검 권장':label==='주의'?'월별 점검 및 개선 요구':'즉시 조치 필요'
+     }</td></tr>`;
+
+  const html = `
+<div class="report-body">
+  <h1>협력업체 품질 분석 보고서</h1>
+  <div class="report-meta">분석 기간: ${esc(period)} &nbsp;|&nbsp; 분석 대상: ${rankings.length}개사 &nbsp;|&nbsp; 생성일시: ${esc(now)}</div>
+
+  <h2>1. 종합 품질 현황 요약</h2>
+  <p>${overallComment} ${defectComment}</p>
+  <p>분석 기간 중 총 <strong>${totalInsp.toLocaleString()}개</strong>를 검사하여 <strong>${totalDefects.toLocaleString()}개</strong>의 부적격품이 발생하였으며,
+  VOC <strong>${totalVoc}건</strong>, 재작업 <strong>${totalRework}건</strong>이 기록되었습니다.
+  리스크 등급별로는 우수 ${riskCounts['우수']}개사, 양호 ${riskCounts['양호']}개사, 주의 ${riskCounts['주의']}개사, 위험 ${riskCounts['위험']}개사로 분류됩니다.</p>
+
+  <table style="width:100%;margin:14px 0">
+    <thead><tr><th>리스크 등급</th><th>업체 수</th><th>비율</th><th>관리 방향</th></tr></thead>
+    <tbody>
+      ${riskRow('우수','#10b981','#d1fae5','#065f46', riskCounts['우수'])}
+      ${riskRow('양호','#3b82f6','#dbeafe','#1e40af', riskCounts['양호'])}
+      ${riskRow('주의','#f59e0b','#fef3c7','#92400e', riskCounts['주의'])}
+      ${riskRow('위험','#ef4444','#fee2e2','#991b1b', riskCounts['위험'])}
+    </tbody>
+  </table>
+
+  <h2>2. 협력업체별 품질 점수 현황</h2>
+  <table style="width:100%;margin:14px 0">
+    <thead><tr><th>순위</th><th>업체명</th><th>품질점수</th><th>등급</th><th>불량률</th><th>VOC</th><th>재작업</th><th>검사건수</th></tr></thead>
+    <tbody>
+      ${rankings.map((r, i) => `
+      <tr>
+        <td style="text-align:center;font-weight:700;color:#64748b">${i+1}</td>
+        <td><strong>${esc(r.name)}</strong></td>
+        <td style="font-weight:700">${r.score}점</td>
+        <td>${badge(r.risk)}</td>
+        <td style="${r.defectRate>3?'color:#ef4444;font-weight:700':''}">${r.defectRate}%</td>
+        <td style="${r.vocCount>0?'color:#f59e0b;font-weight:700':''}">${r.vocCount}건</td>
+        <td style="${r.reworkCount>0?'color:#f59e0b;font-weight:700':''}">${r.reworkCount}건</td>
+        <td style="color:#64748b">${r.count}건</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+
+  ${(dangerList.length || cautionList.length) ? `
+  <h2>3. 주요 리스크 업체 상세 분석</h2>
+  ${[...dangerList, ...cautionList].map(r => `
+  <h3 style="display:flex;align-items:center;gap:8px">
+    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.risk.color}"></span>
+    ${esc(r.name)} <span style="font-size:12px;font-weight:400;color:${r.risk.text};background:${r.risk.bg};padding:2px 8px;border-radius:4px">${r.risk.label}</span>
+  </h3>
+  <table style="width:100%;margin:8px 0 16px">
+    <thead><tr><th>항목</th><th>수치</th><th>평가</th></tr></thead>
+    <tbody>
+      <tr><td>품질점수</td><td><strong>${r.score}점</strong></td><td style="font-size:12px;color:#64748b">${r.risk.label} 등급 (기준: 우수 90↑ / 양호 75↑ / 주의 60↑)</td></tr>
+      <tr><td>불량률</td><td style="${r.defectRate>3?'color:#ef4444;font-weight:700':''}">${r.defectRate}%</td><td style="font-size:12px;color:#64748b">${r.defectRate>3?'관리 기준 초과':r.defectRate>1?'주의 수준':'양호'}</td></tr>
+      <tr><td>VOC 발생</td><td>${r.vocCount}건</td><td style="font-size:12px;color:#64748b">${r.vocCount>0?'재발 방지 대책 필요':'없음'}</td></tr>
+      <tr><td>재작업 발생</td><td>${r.reworkCount}건</td><td style="font-size:12px;color:#64748b">${r.reworkCount>0?'공정 원인 분석 필요':'없음'}</td></tr>
+      <tr><td>검사 건수</td><td>${r.count}건</td><td style="font-size:12px;color:#64748b">총 ${r.totalInspected.toLocaleString()}개 검사 / ${r.totalDefects.toLocaleString()}개 부적격</td></tr>
+    </tbody>
+  </table>`).join('')}` : '<h2>3. 주요 리스크 업체 상세 분석</h2><p>위험 또는 주의 등급 업체가 없습니다.</p>'}
+
+  ${ncTop.length ? `
+  <h2>4. 반복 부적합 상세내역 분석</h2>
+  <p>분석 기간 내 부적합 상세내역이 기재된 검사 건은 총 <strong>${ncTotal}건</strong>이며, 상위 반복 항목은 다음과 같습니다.</p>
+  <table style="width:100%;margin:14px 0">
+    <thead><tr><th>순위</th><th>부적합 내역</th><th>발생건수</th><th>비율</th></tr></thead>
+    <tbody>
+      ${ncTop.map(([k, v], i) => {
+        const pct = ncTotal > 0 ? Math.round(v/ncTotal*100) : 0;
+        return `<tr>
+          <td style="text-align:center;color:#64748b">${i+1}</td>
+          <td>${esc(k)}</td>
+          <td style="font-weight:700">${v}건</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:60px;height:7px;background:#f1f5f9;border-radius:4px;overflow:hidden">
+                <div style="width:${Math.round(v/ncTop[0][1]*100)}%;height:100%;background:#3b82f6;border-radius:4px"></div>
+              </div>
+              <span style="font-size:12px;color:#64748b">${pct}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>` : ''}
+
+  ${dtTop.length ? `
+  <h2>5. 불량 유형 분류 분석</h2>
+  <table style="width:100%;margin:14px 0">
+    <thead><tr><th>순위</th><th>불량 유형</th><th>발생건수</th></tr></thead>
+    <tbody>
+      ${dtTop.map(([k, v], i) => `<tr><td style="text-align:center;color:#64748b">${i+1}</td><td>${esc(k)}</td><td style="font-weight:700">${v}건</td></tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  <h2>${dtTop.length ? '6' : ncTop.length ? '5' : '4'}. 개선 권고사항</h2>
+  ${recommendations.length ? recommendations.map(r => `
+  <h3 style="display:flex;align-items:center;gap:8px">
+    ${esc(r.name)}
+    <span style="font-size:12px;font-weight:500;background:${r.bg};color:${r.color};padding:2px 8px;border-radius:4px">${r.level}</span>
+  </h3>
+  <ul>${r.items.map(it => `<li>${esc(it)}</li>`).join('')}</ul>`).join('') : '<p>주요 리스크 업체 없음 — 현재 품질 수준을 유지하고 지속적인 모니터링을 권고합니다.</p>'}
+  ${generalRecs.length ? `<h3>공통 권고사항</h3><ul>${generalRecs.map(it => `<li>${esc(it)}</li>`).join('')}</ul>` : ''}
+
+  <h2>${dtTop.length ? '7' : ncTop.length ? '6' : '5'}. 결론 및 향후 관리 방향</h2>
+  <p>${period} 기간의 협력업체 품질 종합 평가 결과, ${
+    riskCounts['위험'] > 0
+      ? `<strong>${riskCounts['위험']}개사</strong>가 위험 등급으로 분류되어 즉각적인 개선 조치가 요구됩니다.`
+      : riskCounts['주의'] > 0
+      ? `<strong>${riskCounts['주의']}개사</strong>가 주의 등급으로, 중점 관리가 필요합니다.`
+      : '전 업체가 양호 이상 등급을 유지하고 있습니다.'
+  }</p>
+  <ul>
+    <li><strong>단기(1개월 내)</strong>: 위험·주의 업체 대상 개선계획서 제출 요청 및 강화 검사 실시</li>
+    <li><strong>중기(분기)</strong>: 반복 부적합 유형에 대한 업체 기술 지도 및 공정 점검</li>
+    <li><strong>정기</strong>: 분기별 품질 협의회 운영 및 KPI(불량률 목표) 공유</li>
+    ${totalVoc > 0 ? '<li><strong>VOC 관리</strong>: VOC 재발 방지 매뉴얼 작성 및 담당자 교육 실시</li>' : ''}
+  </ul>
+</div>`;
+
+  document.getElementById('report-output').innerHTML = html;
+  document.getElementById('btn-print').style.display = 'inline-flex';
+}
+
+// ============================================================
+// INIT
+// ============================================================
+updateYearOptions();
+navigate('dashboard');
+</script>
+</body>
+</html>
