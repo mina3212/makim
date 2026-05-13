@@ -7,6 +7,7 @@
 <link rel="icon" href="data:,">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'맑은 고딕',Malgun Gothic,'Segoe UI',sans-serif;background:#f1f5f9;color:#1e293b;display:flex;height:100vh;overflow:hidden}
@@ -173,6 +174,10 @@ input[type=file]#fileInput{display:none}
     <button class="nav-btn" data-page="analytics" onclick="navigate('analytics')"><span class="nav-icon">📈</span>분석</button>
     <button class="nav-btn" data-page="report" onclick="navigate('report')"><span class="nav-icon">🤖</span>AI 보고서</button>
   </nav>
+  <div style="padding:12px 8px;border-top:1px solid #334155">
+    <div id="auth-status" style="font-size:11px;color:#94a3b8;margin-bottom:8px;padding:0 4px"></div>
+    <button id="auth-btn" class="nav-btn" style="width:100%;justify-content:center" onclick="toggleAuth()">🔐 관리자 로그인</button>
+  </div>
 </div>
 
 <div class="content">
@@ -303,9 +308,13 @@ input[type=file]#fileInput{display:none}
       <div class="card-title">협력업체 품질 순위</div>
       <div class="table-wrap" id="ranking-table"></div>
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:20px">
       <div class="card-title">📋 부적합 상세내역 현황 <span id="nc-filter-label" style="font-size:12px;font-weight:400;color:#64748b;margin-left:8px"></span></div>
       <div class="table-wrap" id="nc-summary-table"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏭 협력업체별 대표품목 부적합 현황 <span id="supplier-item-nc-filter-label" style="font-size:12px;font-weight:400;color:#64748b;margin-left:8px"></span></div>
+      <div class="table-wrap" id="supplier-item-nc-table"></div>
     </div>
   </div>
 
@@ -327,59 +336,103 @@ input[type=file]#fileInput{display:none}
 
 <script>
 // ============================================================
-// DATA LAYER
+// SUPABASE
 // ============================================================
-function loadData() {
-  return {
-    suppliers: JSON.parse(localStorage.getItem('qs_suppliers') || '[]'),
-    records:   JSON.parse(localStorage.getItem('qs_records')   || '[]'),
-  };
+const _sb = window.supabase.createClient(
+  'https://dwpbdtoqlgiejugoxwfv.supabase.co',
+  'sb_publishable_Cb4nhcdHzBiA3T6ps94EZA_NKluE5jQ'
+);
+let _user = null;
+
+async function toggleAuth() {
+  if (_user) {
+    await _sb.auth.signOut();
+  } else {
+    const email = prompt('이메일을 입력하세요:');
+    if (!email) return;
+    const pw = prompt('비밀번호를 입력하세요:');
+    if (!pw) return;
+    const { error } = await _sb.auth.signInWithPassword({ email, password: pw });
+    if (error) { alert('로그인 실패: ' + error.message); }
+  }
 }
-function saveData(d) {
-  localStorage.setItem('qs_suppliers', JSON.stringify(d.suppliers));
-  localStorage.setItem('qs_records',   JSON.stringify(d.records));
+
+_sb.auth.onAuthStateChange((event, session) => {
+  _user = session?.user ?? null;
+  const btn = document.getElementById('auth-btn');
+  const status = document.getElementById('auth-status');
+  if (_user) {
+    btn.textContent = '🔓 로그아웃';
+    status.textContent = '✅ 관리자 모드';
+    status.style.color = '#10b981';
+  } else {
+    btn.textContent = '🔐 관리자 로그인';
+    status.textContent = '';
+  }
+});
+
+// ============================================================
+// DATA LAYER (Supabase + in-memory cache)
+// ============================================================
+const _cache = { suppliers: [], records: [] };
+
+async function initData() {
+  const [{ data: sups }, { data: recs }] = await Promise.all([
+    _sb.from('suppliers').select('*').order('created_at'),
+    _sb.from('records').select('*').order('created_at'),
+  ]);
+  _cache.suppliers = sups || [];
+  _cache.records   = recs  || [];
 }
+
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
-function getSuppliers() { return loadData().suppliers; }
+function getSuppliers() { return _cache.suppliers; }
 function getRecords(sid) {
-  const r = loadData().records;
-  return sid ? r.filter(x => x.supplier_id === sid) : r;
+  return sid ? _cache.records.filter(x => x.supplier_id === sid) : _cache.records;
 }
-function getSupplier(id) { return getSuppliers().find(s => s.id === id); }
+function getSupplier(id) { return _cache.suppliers.find(s => s.id === id); }
 
-function addSupplier(name) {
-  const d = loadData();
-  if (d.suppliers.find(s => s.name === name)) throw new Error('이미 존재하는 업체명입니다.');
+function requireAuth() {
+  if (!_user) throw new Error('이 작업은 관리자 로그인이 필요합니다.');
+}
+
+async function addSupplier(name) {
+  requireAuth();
+  if (_cache.suppliers.find(s => s.name === name)) throw new Error('이미 존재하는 업체명입니다.');
   const s = { id: uid(), name, created_at: new Date().toISOString() };
-  d.suppliers.push(s);
-  saveData(d);
+  const { error } = await _sb.from('suppliers').insert(s);
+  if (error) throw new Error(error.message);
+  _cache.suppliers.push(s);
   return s;
 }
-function deleteSupplier(id) {
-  const d = loadData();
-  d.suppliers = d.suppliers.filter(s => s.id !== id);
-  d.records   = d.records.filter(r => r.supplier_id !== id);
-  saveData(d);
+async function deleteSupplier(id) {
+  requireAuth();
+  const { error } = await _sb.from('suppliers').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  _cache.suppliers = _cache.suppliers.filter(s => s.id !== id);
+  _cache.records   = _cache.records.filter(r => r.supplier_id !== id);
 }
-function addRecord(rec) {
-  const d = loadData();
+async function addRecord(rec) {
+  requireAuth();
   const r = { ...rec, id: uid(), created_at: new Date().toISOString() };
-  d.records.push(r);
-  saveData(d);
+  const { error } = await _sb.from('records').insert(r);
+  if (error) throw new Error(error.message);
+  _cache.records.push(r);
   return r;
 }
-function updateRecord(id, upd) {
-  const d = loadData();
-  const i = d.records.findIndex(r => r.id === id);
-  if (i < 0) return;
-  d.records[i] = { ...d.records[i], ...upd };
-  saveData(d);
+async function updateRecord(id, upd) {
+  requireAuth();
+  const { error } = await _sb.from('records').update(upd).eq('id', id);
+  if (error) throw new Error(error.message);
+  const i = _cache.records.findIndex(r => r.id === id);
+  if (i >= 0) _cache.records[i] = { ..._cache.records[i], ...upd };
 }
-function deleteRecord(id) {
-  const d = loadData();
-  d.records = d.records.filter(r => r.id !== id);
-  saveData(d);
+async function deleteRecord(id) {
+  requireAuth();
+  const { error } = await _sb.from('records').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  _cache.records = _cache.records.filter(r => r.id !== id);
 }
 
 // ============================================================
@@ -609,17 +662,18 @@ function renderSuppliers() {
     </tbody></table>`;
 }
 
-function addSupplierUI() {
+async function addSupplierUI() {
   const inp = document.getElementById('new-supplier-name');
   const name = inp.value.trim();
   if (!name) return;
-  try { addSupplier(name); inp.value=''; renderSuppliers(); }
+  try { await addSupplier(name); inp.value=''; renderSuppliers(); }
   catch(e) { alert(e.message); }
 }
 
-function delSupplierUI(id, name) {
+async function delSupplierUI(id, name) {
   if (!confirm(`"${name}" 업체와 모든 품질 기록을 삭제하시겠습니까?`)) return;
-  deleteSupplier(id); renderSuppliers();
+  try { await deleteSupplier(id); renderSuppliers(); }
+  catch(e) { alert(e.message); }
 }
 
 // ============================================================
@@ -715,30 +769,33 @@ function buildRecordForm(editId) {
     </div>`;
 }
 
-function saveRecordUI() {
+async function saveRecordUI() {
   const date = document.getElementById('f-date').value;
   if (!date) { alert('날짜를 입력하세요.'); return; }
-  addRecord({
-    supplier_id: _currentSupplier,
-    record_date: date,
-    part_number: document.getElementById('f-pno').value.trim()||null,
-    part_name: document.getElementById('f-pname').value.trim()||null,
-    received_qty: +document.getElementById('f-recv').value||0,
-    inspection_qty: +document.getElementById('f-insp').value||0,
-    defect_qty: +document.getElementById('f-defq').value||0,
-    pass_fail: document.getElementById('f-pf').value||null,
-    defect_type: document.getElementById('f-dtype').value.trim()||null,
-    nonconformance_detail: document.getElementById('f-detail').value.trim()||null,
-    voc_occurred: document.getElementById('f-voc').checked,
-    rework_occurred: document.getElementById('f-rework').checked,
-    source: '수동',
-  });
-  _showForm = false; renderDetail();
+  try {
+    await addRecord({
+      supplier_id: _currentSupplier,
+      record_date: date,
+      part_number: document.getElementById('f-pno').value.trim()||null,
+      part_name: document.getElementById('f-pname').value.trim()||null,
+      received_qty: +document.getElementById('f-recv').value||0,
+      inspection_qty: +document.getElementById('f-insp').value||0,
+      defect_qty: +document.getElementById('f-defq').value||0,
+      pass_fail: document.getElementById('f-pf').value||null,
+      defect_type: document.getElementById('f-dtype').value.trim()||null,
+      nonconformance_detail: document.getElementById('f-detail').value.trim()||null,
+      voc_occurred: document.getElementById('f-voc').checked,
+      rework_occurred: document.getElementById('f-rework').checked,
+      source: '수동',
+    });
+    _showForm = false; renderDetail();
+  } catch(e) { alert(e.message); }
 }
 
-function delRecordUI(id) {
+async function delRecordUI(id) {
   if (!confirm('이 기록을 삭제하시겠습니까?')) return;
-  deleteRecord(id); renderDetail();
+  try { await deleteRecord(id); renderDetail(); }
+  catch(e) { alert(e.message); }
 }
 
 // ============================================================
@@ -791,7 +848,7 @@ function handleFile(file) {
     return;
   }
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
       const wb = XLSX.read(e.target.result, { type:'binary', cellDates:true });
       const ws = wb.Sheets[wb.SheetNames[0]];
@@ -815,7 +872,7 @@ function handleFile(file) {
           if (!name || name==='undefined' || name==='null') continue;
 
           let supplier = getSuppliers().find(s=>s.name===name);
-          if (!supplier) { supplier = addSupplier(name); newSuppliers.push(name); }
+          if (!supplier) { supplier = await addSupplier(name); newSuppliers.push(name); }
 
           let rd = row.record_date;
           if (!rd || rd==='') rd = today;
@@ -823,19 +880,18 @@ function handleFile(file) {
           else rd = String(rd).slice(0,10);
 
           const safeInt = v => { const n=parseInt(v,10); return isNaN(n)?0:n; };
-          const recv = safeInt(row.received_qty);  // 수량 (입고 전체 수량)
-          const insp = safeInt(row.inspection_qty); // 시료 (샘플링 수량)
+          const recv = safeInt(row.received_qty);
+          const insp = safeInt(row.inspection_qty);
 
           const pfRaw = String(row.pass_fail||'').trim().toLowerCase();
           let passFail = null;
           if (FAIL_VALS.includes(pfRaw)) passFail='부적합';
           else if (PASS_VALS.includes(pfRaw)) passFail='적합';
 
-          let defectQty = safeInt(row.defect_qty); // 부적격 수량
-          // 합격여부가 불합격인데 부적격 수량이 없으면 최소 1로 처리
+          let defectQty = safeInt(row.defect_qty);
           if (passFail==='부적합' && defectQty===0) defectQty = 1;
 
-          addRecord({
+          await addRecord({
             supplier_id: supplier.id,
             record_date: rd,
             part_number: String(row.part_number||'').trim()||null,
@@ -929,6 +985,75 @@ function renderAnalytics() {
       </tbody></table>`;
 
   renderNCSummary(allRecords, suppliers);
+  renderSupplierItemNC(allRecords, suppliers);
+}
+
+function renderSupplierItemNC(records, suppliers) {
+  const y = _filter.year === 'all' ? '전체' : _filter.year+'년';
+  const h = _filter.half === 'all' ? '' : ' '+_filter.half;
+  const lbl = document.getElementById('supplier-item-nc-filter-label');
+  if (lbl) lbl.textContent = `(${y}${h} 기준)`;
+
+  const supMap = {};
+  records.forEach(r => {
+    const nc = (r.nonconformance_detail||'').trim();
+    if (!nc) return;
+    const sup = suppliers.find(s => s.id === r.supplier_id);
+    if (!sup) return;
+    if (!supMap[r.supplier_id]) supMap[r.supplier_id] = { id: r.supplier_id, name: sup.name, items: {} };
+    const pNum = (r.part_number||'').trim();
+    const pName = (r.part_name||'').trim();
+    const iKey = pNum+'|'+pName;
+    const iLabel = [pNum, pName].filter(Boolean).join(' ') || '(품목 미기재)';
+    if (!supMap[r.supplier_id].items[iKey]) supMap[r.supplier_id].items[iKey] = { label: iLabel, nc: {}, total: 0 };
+    supMap[r.supplier_id].items[iKey].nc[nc] = (supMap[r.supplier_id].items[iKey].nc[nc]||0)+1;
+    supMap[r.supplier_id].items[iKey].total++;
+  });
+
+  const list = Object.values(supMap).map(s => {
+    const items = Object.values(s.items).sort((a,b)=>b.total-a.total).slice(0,5)
+      .map(item => ({ ...item, ncList: Object.entries(item.nc).sort((a,b)=>b[1]-a[1]) }));
+    return { ...s, total: items.reduce((a,i)=>a+i.total,0), items };
+  }).sort((a,b)=>b.total-a.total);
+
+  if (!list.length) {
+    document.getElementById('supplier-item-nc-table').innerHTML =
+      '<div class="empty"><div class="empty-icon">📭</div>부적합 상세내역 데이터 없음</div>';
+    return;
+  }
+
+  let rows = '';
+  list.forEach(sup => {
+    const sc = calcScore(filteredRecords(sup.id));
+    const rBadge = sc ? badge(sc.risk) : '';
+    rows += `<tr style="background:#f1f5f9;border-top:2px solid #e2e8f0">
+      <td colspan="3" style="padding:9px 14px">
+        <strong style="font-size:13px">${esc(sup.name)}</strong> ${rBadge}
+        <span style="font-size:11px;color:#64748b;margin-left:8px">부적합 ${sup.total}건</span>
+      </td>
+    </tr>`;
+    sup.items.forEach(item => {
+      item.ncList.forEach(([nc, cnt], ni) => {
+        rows += `<tr>
+          <td style="padding-left:20px;font-size:12px;color:#1d4ed8;font-weight:500;vertical-align:top;white-space:nowrap">
+            ${ni === 0 ? esc(item.label) : ''}
+          </td>
+          <td style="font-size:13px">${esc(nc)}</td>
+          <td style="text-align:center;font-weight:600;color:#475569">${cnt}건</td>
+        </tr>`;
+      });
+    });
+  });
+
+  document.getElementById('supplier-item-nc-table').innerHTML = `
+    <table>
+      <thead><tr>
+        <th style="width:22%">품목 (품번/품명)</th>
+        <th>부적합 내용</th>
+        <th style="width:8%;text-align:center">건수</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 function renderNCSummary(records, suppliers) {
@@ -1043,6 +1168,62 @@ function generateReport() {
   });
   const dtTop = Object.entries(dtMap).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
+  // 협력업체별 대표품목 부적합 집계
+  const supItemMap = {};
+  allRecs.forEach(r => {
+    const nc = (r.nonconformance_detail||'').trim();
+    if (!nc) return;
+    const sup = suppliers.find(s => s.id === r.supplier_id);
+    if (!sup) return;
+    if (!supItemMap[r.supplier_id]) supItemMap[r.supplier_id] = { id: r.supplier_id, name: sup.name, items: {} };
+    const pNum = (r.part_number||'').trim(), pName = (r.part_name||'').trim();
+    const iKey = pNum+'|'+pName;
+    const iLabel = [pNum, pName].filter(Boolean).join(' ') || '(품목 미기재)';
+    if (!supItemMap[r.supplier_id].items[iKey]) supItemMap[r.supplier_id].items[iKey] = { label: iLabel, nc: {}, total: 0 };
+    supItemMap[r.supplier_id].items[iKey].nc[nc] = (supItemMap[r.supplier_id].items[iKey].nc[nc]||0)+1;
+    supItemMap[r.supplier_id].items[iKey].total++;
+  });
+  const supItemList = Object.values(supItemMap).map(s => {
+    const items = Object.values(s.items).sort((a,b)=>b.total-a.total).slice(0,4)
+      .map(item => ({ ...item, ncList: Object.entries(item.nc).sort((a,b)=>b[1]-a[1]) }));
+    return { ...s, total: items.reduce((a,i)=>a+i.total,0), items };
+  }).sort((a,b)=>b.total-a.total).filter(s => s.items.length > 0);
+  const _si = supItemList.length > 0 ? 1 : 0;
+
+  // supItemSection HTML 생성
+  let supItemSection = '';
+  if (supItemList.length) {
+    let siRows = '';
+    supItemList.forEach(sup => {
+      const sc = rankings.find(r => r.id === sup.id);
+      const rBadge = sc ? badge(sc.risk) : '';
+      siRows += `<tr style="background:#f8fafc;border-top:2px solid #e2e8f0">
+        <td colspan="3" style="padding:9px 14px"><strong>${esc(sup.name)}</strong> ${rBadge}
+          <span style="font-size:11px;color:#64748b;margin-left:8px">부적합 ${sup.total}건</span>
+        </td></tr>`;
+      sup.items.forEach(item => {
+        item.ncList.forEach(([nc, cnt], ni) => {
+          siRows += `<tr>
+            <td style="padding-left:20px;font-size:12px;color:#1d4ed8;font-weight:500">${ni===0?esc(item.label):''}</td>
+            <td>${esc(nc)}</td>
+            <td style="text-align:center;font-weight:600">${cnt}건</td>
+          </tr>`;
+        });
+      });
+    });
+    supItemSection = `
+  <h2>4. 협력업체별 대표품목 부적합 현황</h2>
+  <p>협력업체별로 부적합이 발생한 대표 품목과 상세 부적합 내용을 정리하였습니다.</p>
+  <table style="width:100%;margin:14px 0">
+    <thead><tr>
+      <th style="width:22%">품목 (품번/품명)</th>
+      <th>부적합 내용</th>
+      <th style="width:8%;text-align:center">건수</th>
+    </tr></thead>
+    <tbody>${siRows}</tbody>
+  </table>`;
+  }
+
   // ── 종합 평가 문구 (규칙 기반) ────────────────────────
   const overallComment = avgScore >= 90
     ? `전체 협력업체의 평균 품질점수는 <strong>${avgScore}점</strong>으로, 전반적으로 <strong>우수한 품질 수준</strong>을 유지하고 있습니다.`
@@ -1152,8 +1333,10 @@ function generateReport() {
     </tbody>
   </table>`).join('')}` : '<h2>3. 주요 리스크 업체 상세 분석</h2><p>위험 또는 주의 등급 업체가 없습니다.</p>'}
 
+  ${supItemSection}
+
   ${ncTop.length ? `
-  <h2>4. 반복 부적합 상세내역 분석</h2>
+  <h2>${4+_si}. 반복 부적합 상세내역 분석</h2>
   <p>분석 기간 내 부적합 상세내역이 기재된 검사 건은 총 <strong>${ncTotal}건</strong>이며, 상위 반복 항목은 다음과 같습니다.</p>
   <table style="width:100%;margin:14px 0">
     <thead><tr><th>순위</th><th>부적합 내역</th><th>발생건수</th><th>비율</th></tr></thead>
@@ -1178,7 +1361,7 @@ function generateReport() {
   </table>` : ''}
 
   ${dtTop.length ? `
-  <h2>5. 불량 유형 분류 분석</h2>
+  <h2>${5+_si}. 불량 유형 분류 분석</h2>
   <table style="width:100%;margin:14px 0">
     <thead><tr><th>순위</th><th>불량 유형</th><th>발생건수</th></tr></thead>
     <tbody>
@@ -1186,7 +1369,7 @@ function generateReport() {
     </tbody>
   </table>` : ''}
 
-  <h2>${dtTop.length ? '6' : ncTop.length ? '5' : '4'}. 개선 권고사항</h2>
+  <h2>${(dtTop.length ? 6 : ncTop.length ? 5 : 4)+_si}. 개선 권고사항</h2>
   ${recommendations.length ? recommendations.map(r => `
   <h3 style="display:flex;align-items:center;gap:8px">
     ${esc(r.name)}
@@ -1195,7 +1378,7 @@ function generateReport() {
   <ul>${r.items.map(it => `<li>${esc(it)}</li>`).join('')}</ul>`).join('') : '<p>주요 리스크 업체 없음 — 현재 품질 수준을 유지하고 지속적인 모니터링을 권고합니다.</p>'}
   ${generalRecs.length ? `<h3>공통 권고사항</h3><ul>${generalRecs.map(it => `<li>${esc(it)}</li>`).join('')}</ul>` : ''}
 
-  <h2>${dtTop.length ? '7' : ncTop.length ? '6' : '5'}. 결론 및 향후 관리 방향</h2>
+  <h2>${(dtTop.length ? 7 : ncTop.length ? 6 : 5)+_si}. 결론 및 향후 관리 방향</h2>
   <p>${period} 기간의 협력업체 품질 종합 평가 결과, ${
     riskCounts['위험'] > 0
       ? `<strong>${riskCounts['위험']}개사</strong>가 위험 등급으로 분류되어 즉각적인 개선 조치가 요구됩니다.`
@@ -1218,8 +1401,11 @@ function generateReport() {
 // ============================================================
 // INIT
 // ============================================================
-updateYearOptions();
-navigate('dashboard');
+(async () => {
+  await initData();
+  updateYearOptions();
+  navigate('dashboard');
+})();
 </script>
 </body>
 </html>
