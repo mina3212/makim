@@ -148,6 +148,32 @@ input[type=file]#fileInput{display:none}
 .report-body strong{color:#0f172a}
 .report-meta{text-align:center;color:#64748b;font-size:12px;margin-bottom:28px;padding-bottom:16px;border-bottom:1px solid #e2e8f0}
 
+/* Upload loading */
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:38px;height:38px;border:4px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+.upload-loading{text-align:center;padding:52px 20px;background:#fff;border-radius:12px;border:1px solid #e2e8f0;margin-top:16px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.upload-loading-title{font-size:15px;font-weight:600;color:#0f172a;margin-bottom:6px}
+.upload-loading-sub{font-size:12px;color:#94a3b8;margin-top:4px}
+
+/* Toast */
+@keyframes toast-in{from{opacity:0;transform:translateX(50px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toast-out{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(20px)}}
+.toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 8px 28px rgba(0,0,0,.14);font-size:13px;min-width:240px;max-width:320px;display:flex;align-items:flex-start;gap:12px;pointer-events:auto;border-left:4px solid #3b82f6;animation:toast-in .3s ease forwards}
+.toast.removing{animation:toast-out .3s ease forwards}
+.toast.t-success{border-color:#10b981}
+.toast.t-error{border-color:#ef4444}
+.toast.t-warning{border-color:#f59e0b}
+.toast-icon{font-size:18px;margin-top:1px;flex-shrink:0}
+.toast-body{flex:1}
+.toast-title{font-weight:600;color:#0f172a;margin-bottom:2px}
+.toast-sub{font-size:12px;color:#64748b;line-height:1.4}
+.toast-close{background:none;border:none;cursor:pointer;color:#94a3b8;font-size:18px;padding:0;line-height:1;margin-left:4px;flex-shrink:0}
+.toast-close:hover{color:#475569}
+
+/* Batch trend chart */
+.batch-chart-container{position:relative;height:260px}
+
 /* Print */
 @media print{
   body{background:white}
@@ -161,6 +187,7 @@ input[type=file]#fileInput{display:none}
 </style>
 </head>
 <body>
+<div class="toast-container" id="toast-container"></div>
 
 <div class="sidebar">
   <div class="sidebar-logo">
@@ -245,6 +272,15 @@ input[type=file]#fileInput{display:none}
       <div class="score-big" id="detail-score-badge"></div>
     </div>
     <div class="stat-grid" id="detail-stats"></div>
+    <div class="card" id="detail-batch-card" style="margin-bottom:20px;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <span class="card-title" style="margin:0">📈 입고차수별 품목별 불량률 추이</span>
+        <select id="batch-item-filter" style="padding:5px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:#f8fafc;cursor:pointer" onchange="renderBatchChart()">
+          <option value="all">전체 품목 (상위 5)</option>
+        </select>
+      </div>
+      <div class="batch-chart-container"><canvas id="chart-batch-trend"></canvas></div>
+    </div>
     <div class="card" id="detail-records-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <span class="card-title" style="margin:0" id="detail-records-title"></span>
@@ -526,6 +562,7 @@ function destroyChart(id) { if (_charts[id]) { _charts[id].destroy(); delete _ch
 let _currentSupplier = null;
 let _showForm = false;
 let _currentPage = 'dashboard';
+let _batchChartData = null;
 
 function navigate(page, sid) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -698,6 +735,8 @@ function renderDetail() {
     <div class="stat"><div class="stat-val" style="color:#ef4444">${sc.vocCount}건</div><div class="stat-label">VOC 발생</div></div>
   ` : '';
 
+  renderBatchTrendChart(records);
+
   document.getElementById('detail-records-title').textContent = `품질 기록 (${records.length}건)`;
 
   if (_showForm) {
@@ -851,6 +890,7 @@ function handleFile(file) {
     document.getElementById('upload-result').innerHTML = '<div class="alert alert-error">❌ .xlsx 또는 .xls 파일만 업로드 가능합니다.</div>';
     return;
   }
+  document.getElementById('upload-result').innerHTML = `<div class="upload-loading"><div class="spinner"></div><div class="upload-loading-title">파일 읽는 중...</div><div class="upload-loading-sub" id="upload-progress-text">${esc(file.name)}</div></div>`;
   const reader = new FileReader();
   reader.onload = async e => {
     try {
@@ -858,6 +898,8 @@ function handleFile(file) {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rawRows = XLSX.utils.sheet_to_json(ws, { defval:'' });
       const rows = rawRows.map(mapRow);
+      const pElInit = document.getElementById('upload-progress-text');
+      if (pElInit) pElInit.textContent = `총 ${rows.length}행 감지 · 처리 시작...`;
 
       if (!rows.length || !rows[0].hasOwnProperty('supplier_name')) {
         const cols = Object.keys(rawRows[0]||{}).join(', ');
@@ -870,6 +912,8 @@ function handleFile(file) {
       let success=0, errors=[], newSuppliers=[];
 
       for (let i=0; i<rows.length; i++) {
+        const pEl = document.getElementById('upload-progress-text');
+        if (pEl) pEl.textContent = `업로드 중... ${i + 1} / ${rows.length} 행`;
         const row = rows[i];
         try {
           const name = String(row.supplier_name||'').trim();
@@ -914,7 +958,7 @@ function handleFile(file) {
 
       let html = `
         <div class="card" style="margin-top:16px">
-          <div class="card-title">업로드 결과</div>
+          <div class="card-title">✅ 업로드 완료</div>
           <div class="result-grid">
             <div class="result-box" style="background:#f1f5f9"><div class="result-num">${rows.length}</div><div class="result-lbl">전체 행</div></div>
             <div class="result-box" style="background:#d1fae5"><div class="result-num" style="color:#065f46">${success}</div><div class="result-lbl" style="color:#065f46">성공</div></div>
@@ -926,8 +970,10 @@ function handleFile(file) {
       updateYearOptions();
       document.getElementById('upload-result').innerHTML = html;
       document.getElementById('fileInput').value='';
+      showToast('업로드 완료', errors.length > 0 ? `${success}건 성공 · ${errors.length}건 오류 발생` : `총 ${success}건 성공적으로 등록되었습니다`, errors.length > 0 ? 'warning' : 'success');
     } catch(err) {
       document.getElementById('upload-result').innerHTML = `<div class="alert alert-error">❌ 파일 파싱 오류: ${esc(err.message)}</div>`;
+      showToast('업로드 실패', err.message, 'error');
     }
   };
   reader.readAsBinaryString(file);
@@ -1400,6 +1446,122 @@ function generateReport() {
 
   document.getElementById('report-output').innerHTML = html;
   document.getElementById('btn-print').style.display = 'inline-flex';
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(title, sub, type) {
+  const icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const t = document.createElement('div');
+  t.className = `toast t-${type || 'success'}`;
+  t.innerHTML = `<span class="toast-icon">${icons[type]||'✅'}</span><div class="toast-body"><div class="toast-title">${esc(title)}</div>${sub?`<div class="toast-sub">${esc(sub)}</div>`:''}</div><button class="toast-close" onclick="this.closest('.toast').remove()">×</button>`;
+  container.appendChild(t);
+  setTimeout(() => { t.classList.add('removing'); setTimeout(() => t.remove(), 300); }, 4500);
+}
+
+// ============================================================
+// BATCH TREND CHART
+// ============================================================
+function renderBatchTrendChart(records) {
+  const card = document.getElementById('detail-batch-card');
+  destroyChart('batch-trend');
+
+  const itemMap = {};
+  [...records]
+    .filter(r => (r.inspection_qty || r.received_qty) > 0)
+    .sort((a, b) => (a.record_date || '').localeCompare(b.record_date || ''))
+    .forEach(r => {
+      const pNum = (r.part_number || '').trim();
+      const pName = (r.part_name || '').trim();
+      const iKey = pNum + '|' + pName;
+      const iLabel = [pNum, pName].filter(Boolean).join(' ') || '(품목 미기재)';
+      if (!itemMap[iKey]) itemMap[iKey] = { label: iLabel, batches: [] };
+      const insp = r.inspection_qty || r.received_qty || 0;
+      itemMap[iKey].batches.push({
+        date: r.record_date || '-',
+        defectRate: insp > 0 ? +((r.defect_qty || 0) / insp * 100).toFixed(2) : 0,
+        insp,
+        defects: r.defect_qty || 0,
+      });
+    });
+
+  const items = Object.values(itemMap).sort((a, b) => b.batches.length - a.batches.length);
+
+  if (!items.length) { card.style.display = 'none'; _batchChartData = null; return; }
+
+  card.style.display = 'block';
+  _batchChartData = items;
+
+  const sel = document.getElementById('batch-item-filter');
+  sel.innerHTML = `<option value="all">전체 품목 (상위 5)</option>` +
+    items.map((item, i) => `<option value="${i}">${esc(item.label)}</option>`).join('');
+
+  renderBatchChart();
+}
+
+function renderBatchChart() {
+  if (!_batchChartData || !_batchChartData.length) return;
+
+  const val = document.getElementById('batch-item-filter')?.value ?? 'all';
+  const items = val === 'all' ? _batchChartData.slice(0, 5) : [_batchChartData[+val]];
+
+  const maxLen = Math.max(...items.map(i => i.batches.length));
+  const labels = Array.from({ length: maxLen }, (_, i) => `${i + 1}차`);
+
+  const COLORS = ['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6'];
+  const datasets = items.map((item, ci) => ({
+    label: item.label,
+    data: item.batches.map(b => b.defectRate),
+    borderColor: COLORS[ci % COLORS.length],
+    backgroundColor: COLORS[ci % COLORS.length] + '22',
+    tension: 0.3,
+    pointRadius: 5,
+    pointHoverRadius: 7,
+    fill: false,
+  }));
+
+  destroyChart('batch-trend');
+  const ctx = document.getElementById('chart-batch-trend').getContext('2d');
+  _charts['batch-trend'] = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            title: ctx => `${ctx[0].label} 입고`,
+            label: ctx => {
+              const item = items[ctx.datasetIndex];
+              const b = item?.batches[ctx.dataIndex];
+              if (!b) return `${ctx.dataset.label}: ${ctx.parsed.y}%`;
+              return [
+                `${ctx.dataset.label}: 불량률 ${ctx.parsed.y}%`,
+                `날짜: ${b.date}`,
+                `검사 ${b.insp.toLocaleString()}개 / 불량 ${b.defects.toLocaleString()}개`,
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { font: { size: 11 }, callback: v => v + '%' },
+          title: { display: true, text: '불량률 (%)', font: { size: 11 }, color: '#64748b' },
+        },
+        x: {
+          ticks: { font: { size: 11 } },
+          title: { display: true, text: '입고 차수', font: { size: 11 }, color: '#64748b' },
+        },
+      },
+    },
+  });
 }
 
 // ============================================================
